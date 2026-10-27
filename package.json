@@ -1,0 +1,46 @@
+{
+  "name": "dsh-session-memory",
+  "version": "0.17.0",
+  "description": "DSH 单会话记忆插件：每个会话各自记住自己的事实、偏好和人物卡；本地落盘，可在会话顶部工具栏开关、编辑、导出。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "memory",
+    "session",
+    "character-card",
+    "记忆",
+    "人物卡"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "meta": {
+    "title": "单会话记忆",
+    "description": "每个会话独立记住自己的事实与人物卡，本地落盘；会话顶部工具栏可开关、增删、导出。"
+  }
+}
