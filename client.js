@@ -324,6 +324,9 @@ window.__ModuleLoader__.load({
       const [cardOpen, setCardOpen] = useState(false)
       const [card, setCard] = useState({ name: '', alias: '', role: '', appearance: '', personality: '', background: '', speech: '', notes: '' })
       const fileRef = useRef(null)
+      // 情绪 / 性格（原 dsh-session-mood）
+      const [moodOpen, setMoodOpen] = useState(false)
+      const [moodDraft, setMoodDraft] = useState({})
       // 群聊意向：只有真的探测到群聊插件，才显示这一节；探不到就完全不出现
       const [chatOn, setChatOn] = useState(false)
       const [intent, setIntent] = useState(null)
@@ -393,6 +396,11 @@ window.__ModuleLoader__.load({
         },
         [sessionId],
       )
+
+      // 情绪滑块跟随服务端状态
+      useEffect(() => {
+        setMoodDraft(state?.mood?.emotions || {})
+      }, [state])
 
       const doExport = useCallback(
         async (format) => {
@@ -465,6 +473,133 @@ window.__ModuleLoader__.load({
       const entries = state?.entries || []
       const cards = state?.characters || []
       const enabled = state?.enabled !== false
+
+      // ---- 情绪 / 性格（原 dsh-session-mood）----
+      const mood = state?.mood || {
+        enabled: true,
+        personality: { text: '', tags: [] },
+        emotions: {},
+        needsJudge: true,
+        history: [],
+      }
+      const catalog = state?.emotionsCatalog || []
+      const moodTags = mood.personality?.tags || []
+      const topEmo = catalog
+        .map((e) => ({ ...e, value: mood.emotions?.[e.id] ?? 0 }))
+        .sort((a, b) => b.value - a.value)[0]
+
+      const commitEmotion = (id) => {
+        const value = moodDraft[id]
+        if (!Number.isFinite(value)) return
+        run({ action: 'setEmotion', emotion: id, value })
+      }
+
+      const moodSection = h(
+        'div',
+        {
+          key: 'moodsec',
+          style: {
+            border: '1px solid var(--dsw-alias-border-l1)',
+            borderRadius: 9,
+            padding: '9px 11px',
+            marginTop: 12,
+            background: 'var(--dsw-alias-bg-base)',
+          },
+        },
+        [
+          h('div', { key: 'h', style: { display: 'flex', alignItems: 'center', gap: 8 } }, [
+            h('span', { key: 't', style: { fontSize: 12, fontWeight: 600, flex: 1 } }, '情绪 / 性格'),
+            h(
+              'span',
+              { key: 'c', style: S.chip },
+              mood.needsJudge
+                ? '❓ 待判断'
+                : `${topEmo?.value >= 25 ? topEmo.emoji : '😐'} ${topEmo?.value >= 25 ? topEmo.label : '平静'} ${topEmo?.value ?? 0}`,
+            ),
+            h(Toggle, {
+              key: 'sw',
+              on: mood.enabled !== false,
+              onChange: (next) => run({ action: 'toggleMood', enabled: next }),
+            }),
+            h(
+              'button',
+              { key: 'exp', style: S.smallBtn, onClick: () => setMoodOpen((v) => !v) },
+              moodOpen ? '收起' : '展开',
+            ),
+          ]),
+
+          moodOpen
+            ? h('div', { key: 'body', style: { marginTop: 10 } }, [
+                // 性格标签
+                h('div', { key: 'tg', style: { display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7 } }, [
+                  ...(moodTags.length
+                    ? moodTags.map((tag) =>
+                        h(
+                          'span',
+                          {
+                            key: tag,
+                            title: '点击删除',
+                            style: Object.assign({}, S.chip, { cursor: 'pointer' }),
+                            onClick: () => run({ action: 'removeTag', tag }),
+                          },
+                          `#${tag} ×`,
+                        ),
+                      )
+                    : [h('span', { key: 'none', style: S.meta }, '还没有性格标签——AI 会自己贴')]),
+                ]),
+                h('div', { key: 'ti', style: { marginBottom: 9 } }, [
+                  h('input', {
+                    key: 'i',
+                    style: Object.assign({}, S.input, { width: '100%', boxSizing: 'border-box' }),
+                    placeholder: '加一个性格标签，回车确认',
+                    onKeyDown: (e) => {
+                      if (e.key !== 'Enter') return
+                      const v = e.currentTarget.value.trim()
+                      e.currentTarget.value = ''
+                      if (v) run({ action: 'addTag', tag: v })
+                    },
+                  }),
+                ]),
+
+                // 八个情绪
+                h(
+                  'div',
+                  { key: 'emos' },
+                  catalog.map((e) =>
+                    h('div', { key: e.id, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 } }, [
+                      h('span', { key: 'l', style: { width: 58, flex: '0 0 58px', fontSize: 12 } }, `${e.emoji} ${e.label}`),
+                      h('input', {
+                        key: 'r',
+                        type: 'range',
+                        min: 0,
+                        max: 100,
+                        step: 5,
+                        value: moodDraft[e.id] ?? 0,
+                        style: { flex: 1, accentColor: 'var(--dsw-alias-state-business-primary)' },
+                        onChange: (ev) => setMoodDraft((d) => ({ ...d, [e.id]: Number(ev.target.value) })),
+                        onMouseUp: () => commitEmotion(e.id),
+                        onTouchEnd: () => commitEmotion(e.id),
+                      }),
+                      h(
+                        'span',
+                        { key: 'v', style: { width: 26, flex: '0 0 26px', textAlign: 'right', fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } },
+                        String(moodDraft[e.id] ?? 0),
+                      ),
+                    ]),
+                  ),
+                ),
+
+                h('div', { key: 'rp', style: { display: 'flex', gap: 6, marginTop: 8 } }, [
+                  h(
+                    'button',
+                    { key: 'r', style: S.smallBtn, disabled: busy, onClick: () => run({ action: 'resetEmotions' }) },
+                    '让 AI 重新判断',
+                  ),
+                ]),
+              ])
+            : null,
+        ],
+      )
 
       return h('div', null, [
         h('div', { key: 'mask', style: S.mask, onClick: onClose }),
@@ -845,6 +980,9 @@ window.__ModuleLoader__.load({
                     ],
                   ),
                 ),
+            // 情绪 / 性格（原 dsh-session-mood，已并入本插件）
+            moodSection,
+
           ]),
 
           // 底部：导出
@@ -857,15 +995,27 @@ window.__ModuleLoader__.load({
       ])
     }
 
-    // ---------------------------------------------------------------- 设置页：新会话默认值
+    // ---------------------------------------------------------------- 设置页：单会话记忆（独立卡片）
     // 挂在 settings.general.item 上，属于「插件/全局设置」，不跟会话绑。
     function SettingsRow() {
       const [settings, setSettings] = useState(null)
+      const [providers, setProviders] = useState([])
+      const [models, setModels] = useState([])
+      const [judgeDraft, setJudgeDraft] = useState({ provider: '', model: '' })
+      const [error, setError] = useState('')
+      const [hostVersion, setHostVersion] = useState('')
 
       const refresh = useCallback(async () => {
         try {
           const out = await call({ action: 'getSettings' })
-          if (out?.ok) setSettings(out.data.settings)
+          if (out?.ok) {
+            setSettings(out.data.settings)
+            setHostVersion(out.data.version || '')
+            setJudgeDraft({
+              provider: out.data.settings?.judge?.provider || '',
+              model: out.data.settings?.judge?.model || '',
+            })
+          }
         } catch {
           /* 面板没挂上时不打扰 */
         }
@@ -875,7 +1025,27 @@ window.__ModuleLoader__.load({
         refresh()
       }, [refresh])
 
-      const toggle = useCallback(
+      // 拿可用 provider / model（宿主没有 llm 服务就留空，允许手填）
+      useEffect(() => {
+        let alive = true
+        ;(async () => {
+          try {
+            const out = await call({ action: 'listModels' })
+            if (!alive || !out?.ok) return
+            const list = out.data.providers || []
+            setProviders(list)
+            const current = list.find((p) => p.provider === judgeDraft.provider)
+            setModels(current ? current.models : [])
+          } catch {
+            /* 忽略 */
+          }
+        })()
+        return () => {
+          alive = false
+        }
+      }, [judgeDraft.provider])
+
+      const toggleExclusive = useCallback(
         async (next) => {
           setSettings((prev) => ({ ...(prev || {}), defaultExclusive: next }))
           try {
@@ -889,29 +1059,195 @@ window.__ModuleLoader__.load({
         [refresh],
       )
 
-      const on = settings?.defaultExclusive === true
+      const saveJudge = useCallback(
+        async (next) => {
+          setError('')
+          try {
+            const out = await call({
+              action: 'setJudge',
+              enabled: next.enabled === true,
+              provider: next.provider ?? judgeDraft.provider,
+              model: next.model ?? judgeDraft.model,
+              ...(next.everyTurns === undefined ? {} : { everyTurns: next.everyTurns }),
+            })
+            if (out?.ok) {
+              setSettings(out.data.settings)
+              setJudgeDraft({
+                provider: out.data.settings?.judge?.provider || '',
+                model: out.data.settings?.judge?.model || '',
+              })
+            } else {
+              setError(out?.text || '保存失败')
+              refresh()
+            }
+          } catch (e) {
+            setError(String(e?.message ?? e))
+          }
+        },
+        [judgeDraft, refresh],
+      )
+
+      const exclusiveOn = settings?.defaultExclusive === true
+      const judge = settings?.judge || { enabled: false, provider: '', model: '' }
+
+      const label = (text) =>
+        h('div', { key: 'l', style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', marginBottom: 4 } }, text)
+
+      const selectStyle = {
+        width: '100%',
+        height: 30,
+        padding: '0 8px',
+        borderRadius: 7,
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-base)',
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 12,
+        outline: 'none',
+      }
 
       return h(
         'div',
         {
           style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '10px 0',
-            borderTop: '1px solid var(--dsw-alias-border-l1)',
+            border: '1px solid var(--dsw-alias-border-l1)',
+            borderRadius: 12,
+            padding: '14px 16px',
+            marginTop: 14,
+            background: 'var(--dsw-alias-bg-layer-1)',
           },
         },
         [
-          h('div', { key: 'l', style: { flex: 1, minWidth: 0 } }, [
-            h('div', { key: 't', style: { fontSize: 13, fontWeight: 500 } }, '单会话记忆'),
-            h(
-              'div',
-              { key: 'd', style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', marginTop: 2 } },
-              '新会话默认开启「独占」：只保留单会话记忆这一套，压掉 dsh-mnemon 等其他插件注入的记忆内容。会话里的开关仍可单独改。',
-            ),
+          // 标题
+          h('div', { key: 'head', style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 } }, [
+            h('span', { key: 'i', style: { fontSize: 17 } }, '🧠'),
+            h('div', { key: 't', style: { flex: 1, minWidth: 0 } }, [
+              h('div', { key: 'a', style: { fontSize: 13.5, fontWeight: 600 } }, '单会话记忆'),
+              h(
+                'div',
+                { key: 'b', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', marginTop: 2 } },
+                `每个会话各记各的；这里管的是全局默认值和辅助判断模型${hostVersion ? `　Host v${hostVersion}` : ''}`,
+              ),
+            ]),
           ]),
-          h(Toggle, { key: 'sw', on, onChange: toggle }),
+
+          error
+            ? h(
+                'div',
+                { key: 'err', style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', marginBottom: 10 } },
+                error,
+              )
+            : null,
+
+          // ① 新会话默认独占
+          h('div', { key: 'row1', style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } }, [
+            h('div', { key: 'l', style: { flex: 1, minWidth: 0 } }, [
+              h('div', { key: 't', style: { fontSize: 12.5 } }, '新会话默认开启「独占」'),
+              h(
+                'div',
+                { key: 'd', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', marginTop: 2 } },
+                '只保留单会话记忆这一套，压掉 dsh-mnemon 等其他插件注入的记忆内容。会话里的开关仍可单独改。',
+              ),
+            ]),
+            h(Toggle, { key: 'sw', on: exclusiveOn, onChange: toggleExclusive }),
+          ]),
+
+          // 分隔
+          h('div', {
+            key: 'sep',
+            style: { height: 1, background: 'var(--dsw-alias-border-l1)', margin: '0 0 14px' },
+          }),
+
+          // ② 辅助判断模型
+          h('div', { key: 'row2', style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 } }, [
+            h('div', { key: 'l', style: { flex: 1, minWidth: 0 } }, [
+              h('div', { key: 't', style: { fontSize: 12.5 } }, '用别的模型辅助判断记忆'),
+              h(
+                'div',
+                { key: 'd', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', marginTop: 2 } },
+                '开启后，每轮会把你指定的模型叫来当第二意见：这轮有没有值得长期记的事。可以用便宜的模型。',
+              ),
+            ]),
+            h(Toggle, {
+              key: 'sw',
+              on: judge.enabled === true,
+              onChange: (next) => saveJudge({ enabled: next }),
+            }),
+          ]),
+
+          // 选择器始终显示：允许「先选模型再开」，也允许「先开再选」
+          h('div', {
+            key: 'judge-form',
+            style: { display: 'flex', gap: 10, flexWrap: 'wrap', opacity: judge.enabled ? 1 : 0.55 },
+          }, [
+                h('div', { key: 'p', style: { flex: '1 1 180px', minWidth: 0 } }, [
+                  label('Provider'),
+                  h(
+                    'select',
+                    {
+                      key: 's',
+                      style: selectStyle,
+                      value: judgeDraft.provider,
+                      onChange: (e) => {
+                        const provider = e.target.value
+                        setJudgeDraft({ provider, model: '' })
+                        saveJudge({ enabled: true, provider, model: '' })
+                      },
+                    },
+                    [
+                      providers.length === 0
+                        ? h('option', { key: 'none', value: '' }, '（拿不到 provider，可手填）')
+                        : null,
+                      ...providers.map((p) => h('option', { key: p.provider, value: p.provider }, p.label || p.provider)),
+                    ],
+                  ),
+                ]),
+                h('div', { key: 'm', style: { flex: '1 1 180px', minWidth: 0 } }, [
+                  label('模型'),
+                  h(
+                    'select',
+                    {
+                      key: 's',
+                      style: selectStyle,
+                      value: judgeDraft.model,
+                      onChange: (e) => {
+                        const model = e.target.value
+                        setJudgeDraft((d) => ({ ...d, model }))
+                        saveJudge({ enabled: true, model })
+                      },
+                    },
+                    [
+                      h('option', { key: 'none', value: '' }, '（先选 Provider）'),
+                      ...models.map((m) => h('option', { key: m, value: m }, m)),
+                    ],
+                  ),
+                ]),
+                h('div', { key: 'freq', style: { flex: '0 0 132px' } }, [
+                  label('判断频率'),
+                  h(
+                    'select',
+                    {
+                      key: 's',
+                      style: selectStyle,
+                      value: String(judge.everyTurns || 3),
+                      onChange: (e) => saveJudge({ enabled: true, everyTurns: Number(e.target.value) }),
+                    },
+                    [1, 2, 3, 5, 10].map((n) =>
+                      h('option', { key: n, value: String(n) }, n === 1 ? '每轮（贵）' : `每 ${n} 轮`),
+                    ),
+                  ),
+                ]),
+              ]),
+            // 还没选好模型时给一句明确提示，别让人以为已经生效
+            judge.enabled && !(judge.provider && judge.model)
+              ? h(
+                  'div',
+                  {
+                    key: 'judge-hint',
+                    style: { fontSize: 11.5, color: 'var(--dsw-alias-state-business-primary)', marginTop: 8 },
+                  },
+                  '已打开，但还没选好 Provider + 模型，暂时不会生效。',
+                )
+              : null,
         ],
       )
     }
@@ -971,10 +1307,10 @@ window.__ModuleLoader__.load({
                   style: {
                     position: 'fixed',
                     top: 48,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: 900,
-                    maxWidth: 'calc(100vw - 32px)',
+                    // 靠左放，右边（420px）留给情绪抽屉，两个抽屉不再互相压
+                    left: 16,
+                    width: 'min(900px, calc(100vw - 470px))',
+                    minWidth: 420,
                     height: 'min(78vh, 720px)',
                     display: 'flex',
                     flexDirection: 'column',
