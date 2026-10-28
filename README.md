@@ -23,10 +23,16 @@
 设置 → 插件 → 添加插件：
 
 ```
-C:\Users\17833\Desktop\dsh插件研发\自我配置\dsh-session-memory
+https://github.com/JL-0420/dsh-session-chat-final
 ```
 
-**改动过代码必须卸载重装，并重启 DSH**（Host 与 Web 端都要重新加载）。
+（本地开发时也可以直接填解压后的文件夹路径。）
+
+## 配套记忆和人物卡功能（类酒馆，非必须）
+
+```
+https://github.com/JL-0420/dsh-session-memory
+```
 
 ## 用起来长什么样
 
